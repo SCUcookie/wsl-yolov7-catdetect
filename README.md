@@ -1,4 +1,4 @@
-# wsl-yolov7-catdetect
+# wsl-yolov7-catdetect combine raspberry pi
 record prof colin's baseline-cat detect
 use yolov7 to train five different cats-classes=["persian","ragdoll","scottish","singpura","sphynx"]
 in order to enhance pre, use imagenet to pretrain, and then use our own dataset.
