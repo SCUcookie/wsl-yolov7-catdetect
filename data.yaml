@@ -1,0 +1,5 @@
+train: dataset_sampe/train/images
+val: dataset_sampe/valid/images
+
+nc: 5
+names: ['Ragdolls', 'Singapura', 'Persians', 'Sphynx', Scottish Folds']
