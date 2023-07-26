@@ -1,0 +1,88 @@
+import paho.mqtt.client as mqtt
+import numpy as np
+import json
+import cv2
+import torch
+from models.experimental import attempt_load
+from utils.general import check_img_size, non_max_suppression, scale_coords, xyxy2xywh
+from utils.torch_utils import select_device
+from PIL import Image
+import os
+import threading
+
+def on_message(client,userdata,msg):
+    print("Received message from server.")
+    threading.Thread(target=process_message, args=(client, msg)).start()
+
+def process_message(client, msg):
+    recv_dict=json.loads(msg.payload)
+    filename=recv_dict["filename"]
+    img_data=np.array(recv_dict["data"])
+    
+    # 指定保存图片的路径
+    save_path = "output/" + filename
+    cv2.imwrite(save_path, img_data)
+    
+    prediction = detect(client, save_path)  # 使用新的路径
+    print("Detection result: ", prediction)
+    send_dict = {"filename": filename, "prediction": prediction}
+    client.publish("Group_01/IMAGE/predict", json.dumps(send_dict))
+
+
+class_names = ['Ragdolls', 'Singapura', 'Persians', 'Sphynx', 'Scottish Folds']
+
+def on_connect(client,userdata,flags,rc):
+    if rc==0:
+        print("Connected.")
+        client.subscribe("Group_01/IMAGE/classify")
+    else:
+        print("Failed to connect, Error code: %d."% rc)
+
+def setup(hostname):
+    client=mqtt.Client()
+    client.on_connect=on_connect
+    client.on_message=on_message
+    client.connect(hostname)
+    client.loop_start()
+    # Load model
+    device = "cpu"
+    client.model = attempt_load("yolov7/weights/best2.pt", map_location=device)
+    return client
+
+def detect(client, filename, imgsz = 640):
+    model = client.model  # Use the model loaded in setup
+    stride = int(model.stride.max())  # model stride
+    imgsz = check_img_size(imgsz, s=stride)  # check img_size
+    img = cv2.imread(filename)  # Load image
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convert from BGR to RGB
+    img = img.transpose((2, 0, 1))  # Change dimension order from HWC to CHW
+    img = torch.from_numpy(img).to("cpu")
+    img = img.float()  # uint8 to fp32
+    img /= 255.0  # 0 - 255 to 0.0 - 1.0
+    if img.ndimension() == 3:
+        img = img.unsqueeze(0)
+    pred = model(img)[0]
+    pred = non_max_suppression(pred, 0.25, 0.65)
+    max_conf = -1
+    max_cls = -1
+    for i, det in enumerate(pred):  # detections per image
+        gn = torch.tensor(img.shape)[[1, 0, 1, 0]]  # normalization gain whwh
+        if len(det):
+            det[:, :4] = scale_coords(img.shape[2:], det[:, :4], img.shape).round()
+            for *xyxy, conf, cls in reversed(det):
+                if conf > max_conf:
+                    max_conf = conf
+                    max_cls = int(cls.item())
+    if max_cls == -1:  # If no object is detected, randomly select a class
+        max_cls = np.random.randint(0, 5)
+    return max_cls
+
+
+
+def main():
+    setup("172.25.111.92")
+    while True:
+        pass
+
+if __name__ == '__main__':
+    main()
